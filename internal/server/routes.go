@@ -33,9 +33,8 @@ func NewRouter(cfg *config.Config, rateLimiter *middleware.RateLimiterStore) htt
 	r.Use(middleware.Logger)
 	r.Use(chimiddleware.Compress(5))
 
-	// --- Public router ---
-	public := chi.NewRouter()
-	registerPublic(public, handler.RegisterPublic)
+	// --- Public routes mounted directly on root ---
+	registerPublic(r, handler.RegisterPublic)
 
 	// --- Protected router ---
 	protected := chi.NewRouter()
@@ -43,8 +42,6 @@ func NewRouter(cfg *config.Config, rateLimiter *middleware.RateLimiterStore) htt
 	protected.Use(rateLimiter.RateLimit)
 	registerProtected(protected, handler.RegisterProtected)
 
-	// Mount with OTel instrumentation
-	r.Mount("/", public)
 	r.Mount("/", otelhttp.NewHandler(protected, "protected",
 		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
 	))
