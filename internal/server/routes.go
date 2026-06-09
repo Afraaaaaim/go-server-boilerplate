@@ -1,8 +1,9 @@
 package server
 
 import (
+	"fmt"
+	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -13,42 +14,82 @@ import (
 	"github.com/Afraaaaaim/go-server-boilerplate/internal/middleware"
 )
 
+// publicHandler is implemented by handler packages that have public routes.
+type publicHandler interface {
+	RegisterPublic(r chi.Router)
+}
+
+// protectedHandler is implemented by handler packages that have protected routes.
+type protectedHandler interface {
+	RegisterProtected(r chi.Router)
+}
+
 func NewRouter(cfg *config.Config, rateLimiter *middleware.RateLimiterStore) http.Handler {
 	r := chi.NewRouter()
 
-	// --- Global middleware (applied to every request) ---
-	// Order matters: recovery must be first to catch panics in other middleware.
+	// --- Global middleware ---
 	r.Use(middleware.Recovery)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
-	r.Use(chimiddleware.Compress(5)) // gzip responses
+	r.Use(chimiddleware.Compress(5))
 
-	// --- Public routes (no auth, no rate limiting) ---
-	r.Get("/healthz", handler.Healthz)
-	r.Get("/readyz", handler.Readyz)
+	// --- Public router ---
+	public := chi.NewRouter()
+	registerPublic(public, handler.RegisterPublic)
 
-	// --- Protected routes ---
-	r.Group(func(r chi.Router) {
-		r.Use(middleware.APIKeyAuth(cfg.APIKeys))
-		r.Use(rateLimiter.RateLimit)
+	// --- Protected router ---
+	protected := chi.NewRouter()
+	protected.Use(middleware.APIKeyAuth(cfg.APIKeys))
+	protected.Use(rateLimiter.RateLimit)
+	registerProtected(protected, handler.RegisterProtected)
 
-		// Wrap with OTel HTTP instrumentation so every request gets a trace span.
-		// otelhttp.NewHandler wraps the entire subrouter.
-		r.Mount("/api", otelhttp.NewHandler(apiRouter(), "api",
-			otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
-		))
-	})
+	// Mount with OTel instrumentation
+	r.Mount("/", public)
+	r.Mount("/", otelhttp.NewHandler(protected, "protected",
+		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
+	))
 
 	return r
 }
 
-// apiRouter defines all /api/* routes.
-// Add your domain routes here as the project grows.
-func apiRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/example", handler.Example)
-	return r
+// registerPublic mounts a public registration function and logs each route.
+func registerPublic(r chi.Router, fn func(chi.Router)) {
+	// Wrap in a recording router to capture what gets registered
+	recorder := chi.NewRouter()
+	fn(recorder)
+
+	for _, route := range recorder.Routes() {
+		for method := range route.Handlers {
+			slog.Info("route registered",
+				slog.String("method", method),
+				slog.String("path", route.Pattern),
+				slog.String("auth", "none"),
+			)
+		}
+	}
+
+	fn(r)
 }
 
-// ensure otelhttp timeout option compiles — remove if unused
-var _ = time.Second
+// registerProtected mounts a protected registration function and logs each route.
+func registerProtected(r chi.Router, fn func(chi.Router)) {
+	recorder := chi.NewRouter()
+	fn(recorder)
+
+	for _, route := range recorder.Routes() {
+		for method := range route.Handlers {
+			slog.Info("route registered",
+				slog.String("method", method),
+				slog.String("path", route.Pattern),
+				slog.String("auth", "api-key"),
+			)
+		}
+	}
+
+	fn(r)
+}
+
+// routeKey is used to format a route for display purposes.
+func routeKey(method, path string) string {
+	return fmt.Sprintf("%s %s", method, path)
+}

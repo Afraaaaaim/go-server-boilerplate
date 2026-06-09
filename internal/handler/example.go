@@ -1,12 +1,14 @@
 package handler
 
 import (
-    "encoding/json"
-    "log/slog"
-    "net/http"
+	"encoding/json"
+	"log/slog"
+	"net/http"
 
-    "github.com/Afraaaaaim/go-server-boilerplate/internal/middleware"
-    "github.com/Afraaaaaim/go-server-boilerplate/pkg/apierror"
+	"github.com/go-chi/chi/v5"
+
+	"github.com/Afraaaaaim/go-server-boilerplate/internal/middleware"
+	"github.com/Afraaaaaim/go-server-boilerplate/pkg/apierror"
 )
 
 type exampleResponse struct {
@@ -14,14 +16,9 @@ type exampleResponse struct {
 	ClientID string `json:"client_id,omitempty"`
 }
 
-// Example is a placeholder handler showing the standard pattern:
-// read context values, do work, write JSON response.
-// Replace or delete this once you add real domain handlers.
 func Example(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	// Pull request-scoped values injected by middleware
-	requestID := middleware.RequestIDFromContext(ctx)  // from context, not header
+	requestID := middleware.RequestIDFromContext(ctx)
 
 	slog.InfoContext(ctx, "example handler called",
 		slog.String("request_id", requestID),
@@ -37,4 +34,9 @@ func Example(w http.ResponseWriter, r *http.Request) {
 		apierror.InternalError(w, requestID)
 		return
 	}
+}
+
+// RegisterProtected registers example routes on the protected router (auth required).
+func RegisterProtected(r chi.Router) {
+	r.Get("/api/example", Example)
 }
