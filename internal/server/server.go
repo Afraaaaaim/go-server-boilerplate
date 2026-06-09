@@ -39,7 +39,6 @@ func New(cfg *config.Config, router http.Handler) *Server {
 func (s *Server) Start() error {
 	slog.Info("server starting",
 		slog.String("port", s.cfg.Port),
-		slog.String("env", s.cfg.Env),
 	)
 	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("server error: %w", err)

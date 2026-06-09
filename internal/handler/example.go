@@ -1,11 +1,12 @@
 package handler
 
 import (
-	"encoding/json"
-	"log/slog"
-	"net/http"
+    "encoding/json"
+    "log/slog"
+    "net/http"
 
-	"github.com/Afraaaaaim/go-server-boilerplate/pkg/apierror"
+    "github.com/Afraaaaaim/go-server-boilerplate/internal/middleware"
+    "github.com/Afraaaaaim/go-server-boilerplate/pkg/apierror"
 )
 
 type exampleResponse struct {
@@ -20,7 +21,7 @@ func Example(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Pull request-scoped values injected by middleware
-	requestID := r.Header.Get("X-Request-ID")
+	requestID := middleware.RequestIDFromContext(ctx)  // from context, not header
 
 	slog.InfoContext(ctx, "example handler called",
 		slog.String("request_id", requestID),
